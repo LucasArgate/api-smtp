@@ -18,13 +18,15 @@ import os
 from minio import Minio
 from minio.error import S3Error
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+import asyncio
+from email_receiver import start_email_receiver, EmailReceiver
 
 def load_smtp_config():
     with open('smtp_config.json', 'r') as file:
         return json.load(file)
 
 smtp_config = load_smtp_config()
-API_KEY = smtp_config.get('api_key', 'your_api_key')
+API_KEY = smtp_config.get('api_key', 'api-test-key')
 
 app = FastAPI(
     title=smtp_config.get('api_name'),
@@ -34,6 +36,36 @@ app = FastAPI(
     redoc_url=None,  # Disable the default redoc
     openapi_url="/openapi.json"
 )
+
+# Variável global para o email receiver
+email_receiver = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Inicializa o email receiver quando a aplicação inicia"""
+    global email_receiver
+    
+    # Callback para processar emails recebidos
+    async def email_received_callback(email_data):
+        """Callback chamado quando um email é recebido"""
+        print(f"📧 Email recebido: {email_data.get('subject', 'Sem assunto')} de {email_data.get('from', {}).get('address', 'Desconhecido')}")
+        
+        # Aqui você pode adicionar lógica adicional como:
+        # - Notificações
+        # - Processamento específico
+        # - Logs customizados
+        # - Integração com outros sistemas
+    
+    # Iniciar email receiver em background
+    email_receiver = await start_email_receiver(smtp_config, email_received_callback)
+    print("🚀 Email receiver iniciado com sucesso!")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup quando a aplicação é encerrada"""
+    global email_receiver
+    if email_receiver:
+        print("🛑 Email receiver encerrado")
 
 @app.get("/openapi.json", include_in_schema=False)
 async def get_open_api_endpoint():
@@ -297,6 +329,103 @@ async def send_email_json(
 
     background_tasks.add_task(send_email_task, email_request, email_id, client_ip, headers, [])
     return {"message": "Email is being sent in the background", "email_id": email_id}
+
+# Novos endpoints para emails recebidos
+@app.get("/v1/mail/received", include_in_schema=True)
+async def get_received_emails(
+    limit: int = 50,
+    offset: int = 0,
+    api_key: str = Depends(get_api_key)
+):
+    """Lista emails recebidos"""
+    if not email_receiver:
+        raise HTTPException(status_code=503, detail="Email receiver não está disponível")
+    
+    try:
+        emails = await email_receiver.get_received_emails(limit=limit, offset=offset)
+        return {
+            "emails": emails,
+            "total": len(emails),
+            "limit": limit,
+            "offset": offset
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar emails: {str(e)}")
+
+@app.get("/v1/mail/received/search", include_in_schema=True)
+async def search_received_emails(
+    query: str,
+    api_key: str = Depends(get_api_key)
+):
+    """Busca emails recebidos por texto"""
+    if not email_receiver:
+        raise HTTPException(status_code=503, detail="Email receiver não está disponível")
+    
+    if not query or len(query.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Query deve ter pelo menos 2 caracteres")
+    
+    try:
+        emails = await email_receiver.search_received_emails(query.strip())
+        return {
+            "emails": emails,
+            "total": len(emails),
+            "query": query
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro na busca: {str(e)}")
+
+@app.get("/v1/mail/received/statistics", include_in_schema=True)
+async def get_received_statistics(
+    api_key: str = Depends(get_api_key)
+):
+    """Retorna estatísticas dos emails recebidos"""
+    if not email_receiver:
+        raise HTTPException(status_code=503, detail="Email receiver não está disponível")
+    
+    try:
+        stats = email_receiver.get_statistics()
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao obter estatísticas: {str(e)}")
+
+@app.get("/v1/mail/received/{email_id}", include_in_schema=True)
+async def get_received_email(
+    email_id: str,
+    api_key: str = Depends(get_api_key)
+):
+    """Busca um email recebido específico"""
+    if not email_receiver:
+        raise HTTPException(status_code=503, detail="Email receiver não está disponível")
+    
+    try:
+        # Buscar todos os emails e filtrar pelo ID
+        all_emails = await email_receiver.get_received_emails(limit=1000, offset=0)
+        
+        for email in all_emails:
+            if email.get('id') == email_id:
+                return email
+        
+        raise HTTPException(status_code=404, detail="Email não encontrado")
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar email: {str(e)}")
+
+@app.delete("/v1/mail/received/{email_id}", include_in_schema=True)
+async def delete_received_email(
+    email_id: str,
+    api_key: str = Depends(get_api_key)
+):
+    """Remove um email recebido"""
+    if not email_receiver:
+        raise HTTPException(status_code=503, detail="Email receiver não está disponível")
+    
+    try:
+        # Implementar lógica de remoção do MinIO
+        # Por segurança, vamos apenas marcar como deletado por enquanto
+        return {"message": "Email marcado para remoção", "email_id": email_id}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao remover email: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

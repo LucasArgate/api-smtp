@@ -2,3 +2,5 @@ fastapi
 uvicorn
 pydantic
 minio
+aiohttp
+python-multipart

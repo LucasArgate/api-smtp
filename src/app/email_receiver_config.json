@@ -1,0 +1,24 @@
+{
+    "maildev": {
+        "web_port": 1080,
+        "smtp_port": 1025,
+        "polling_interval": 30,
+        "error_retry_interval": 60
+    },
+    "storage": {
+        "bucket_name": "received_emails",
+        "max_email_size_mb": 10,
+        "max_attachment_size_mb": 5
+    },
+    "processing": {
+        "auto_mark_read": true,
+        "save_attachments": true,
+        "save_raw_email": false,
+        "enable_logging": true
+    },
+    "webhooks": {
+        "enabled": false,
+        "endpoint": "http://localhost:8000/v1/webhook/email-received",
+        "secret_key": "your_webhook_secret_here"
+    }
+}
