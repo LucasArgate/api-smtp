@@ -4,3 +4,4 @@ pydantic
 minio
 aiohttp
 python-multipart
+requests

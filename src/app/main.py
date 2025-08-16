@@ -20,6 +20,7 @@ from minio.error import S3Error
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 import asyncio
 from email_receiver import start_email_receiver, EmailReceiver
+from mcp_server import mcp_router, init_mcp_system
 
 def load_smtp_config():
     with open('smtp_config.json', 'r') as file:
@@ -59,6 +60,10 @@ async def startup_event():
     # Iniciar email receiver em background
     email_receiver = await start_email_receiver(smtp_config, email_received_callback)
     print("🚀 Email receiver iniciado com sucesso!")
+    
+    # Inicializar sistema MCP
+    init_mcp_system(email_receiver)
+    print("🤖 Sistema MCP inicializado com sucesso!")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -426,6 +431,9 @@ async def delete_received_email(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao remover email: {str(e)}")
+
+# Incluir o router MCP
+app.include_router(mcp_router)
 
 if __name__ == "__main__":
     import uvicorn
